@@ -1,0 +1,97 @@
+{% extends "layout.html" %}
+
+{% block title %}本地PCAP文件导入 - 安卓恶意软件流量检测系统{% endblock %}
+
+{% block page_title %}本地PCAP文件导入{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">上传PCAP文件</h2>
+    
+    {% if error %}
+    <div style="color: #e74c3c; margin-bottom: 15px;">
+        错误: {{ error }}
+    </div>
+    {% endif %}
+    
+    <form action="{{ url_for('pcap_import') }}" method="post" enctype="multipart/form-data" onsubmit="return validateFileUpload()">
+        <div class="form-group">
+            <label for="pcap-file" class="form-label">选择PCAP文件：</label>
+            <input type="file" id="pcap-file" name="file" class="form-control">
+            <small style="color: #7f8c8d; display: block; margin-top: 5px;">只支持.pcap格式文件</small>
+        </div>
+        
+        <div id="loading-indicator" style="display: none; margin-bottom: 15px;">
+            <p>文件分析中，请稍候...</p>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">上传并分析</button>
+    </form>
+</div>
+
+{% if results %}
+<div class="card">
+    <h2 class="card-title">分析结果: {{ filename }}</h2>
+    <p>发现恶意流量总数: <strong>{{ results.total_malicious }}</strong></p>
+    
+    <form id="sort-form" action="{{ url_for('pcap_import') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="file" value="{{ filename }}">
+        
+        <div class="sort-controls">
+            <div class="sort-control">
+                <label for="sort-by" class="form-label">排序方式:</label>
+                <select id="sort-by" name="sort_by" class="form-control">
+                    <option value="timestamp" {% if request.form.sort_by == 'timestamp' or not request.form.sort_by %}selected{% endif %}>时间</option>
+                    <option value="ip" {% if request.form.sort_by == 'ip' %}selected{% endif %}>IP地址</option>
+                </select>
+            </div>
+            
+            <div class="sort-control">
+                <label for="sort-order" class="form-label">排序顺序:</label>
+                <select id="sort-order" name="sort_order" class="form-control">
+                    <option value="desc" {% if request.form.sort_order == 'desc' or not request.form.sort_order %}selected{% endif %}>降序</option>
+                    <option value="asc" {% if request.form.sort_order == 'asc' %}selected{% endif %}>升序</option>
+                </select>
+            </div>
+        </div>
+    </form>
+    
+    <table class="results-table">
+        <thead>
+            <tr>
+                <th>时间戳</th>
+                <th>IP地址</th>
+                <th>端口</th>
+                <th>可信度评分</th>
+                <th>详情</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in results.traffic %}
+            <tr>
+                <td>{{ item.timestamp }}</td>
+                <td>{{ item.ip }}</td>
+                <td>{{ item.port }}</td>
+                <td>
+                    {% if item.confidence >= 0.9 %}
+                    <span class="alert-high">{{ "%.2f"|format(item.confidence) }}</span>
+                    {% elif item.confidence >= 0.7 %}
+                    <span class="alert-medium">{{ "%.2f"|format(item.confidence) }}</span>
+                    {% else %}
+                    <span class="alert-low">{{ "%.2f"|format(item.confidence) }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.details }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 添加任何特定于此页面的JavaScript
+</script>
+{% endblock %} 

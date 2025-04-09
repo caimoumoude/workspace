@@ -1,0 +1,82 @@
+import xgboost as xgb
+import catboost as ctb
+import pickle
+import pandas as pd
+import numpy as np
+from config.cicconfig import mapping
+
+if __name__ == "__main__":
+    # Load XGBoost model
+    clf = xgb.XGBClassifier()
+    clf.load_model('model/xgb_model.json')
+
+    # Load CatBoost model
+    cat_clf = ctb.CatBoostClassifier()
+    cat_clf.load_model('model/cat_model.cbm')
+
+    # Load meta-model
+    with open('model/meta_model.pkl', 'rb') as f:
+        meta_model = pickle.load(f)
+
+    # Read CSV file
+    data = pd.read_csv('2025-04-08_Flow.csv', encoding='gbk')
+
+    # Rename columns using the mapping
+    data = data.rename(columns=mapping)
+
+    # Convert data types to integers, excluding 'Label' column
+    for col in data.columns:
+        if col != 'Label':
+            try:
+                series = pd.to_numeric(data[col], errors='coerce')
+                series = series.replace([np.inf, -np.inf], np.nan)
+                series = series.fillna(0).astype(int)
+                data[col] = series
+            except Exception as e:
+                print(f"Error converting column {col}: {e}")
+
+    print("Data types after conversion:")
+
+    # Prepare data for prediction by dropping 'Label' column
+    X_new = data.drop(['Label'], axis=1, errors='ignore')
+    X_new.to_csv('output.csv', index=False)
+
+    # Get prediction probabilities from base models
+    xgb_pred_proba = clf.predict_proba(X_new)
+    cat_pred_proba = cat_clf.predict_proba(X_new)
+
+    # Get predictions from base models
+    xgb_pred = clf.predict(X_new)
+    cat_pred = cat_clf.predict(X_new)
+
+    # Stack prediction probabilities for meta-model input
+    meta_features = np.column_stack((xgb_pred_proba, cat_pred_proba))
+
+    # Make final predictions using the meta-model
+    final_pred = meta_model.predict(meta_features)
+
+    # Count malicious flows (assuming 1 represents malicious traffic)
+    xgb_malicious_count = np.sum(xgb_pred == 1)
+    cat_malicious_count = np.sum(cat_pred == 1)
+    meta_malicious_count = np.sum(final_pred == 1)
+
+    # Print the number of malicious flows detected by each model
+    print(f'XGBoost模型检测到的恶性流量数量: {xgb_malicious_count}')
+    print(f'CatBoost模型检测到的恶性流量数量: {cat_malicious_count}')
+    print(f'元模型检测到的恶性流量数量: {meta_malicious_count}')
+
+    # Create a DataFrame with predictions
+    data_with_predictions = data.copy()
+    data_with_predictions['Prediction'] = final_pred
+
+    # Filter out malicious flows (where Prediction == 1)
+    malicious_data = data_with_predictions[data_with_predictions['Prediction'] == 1]
+
+    # Print information about malicious flows
+    print(f"恶意流量数量: {len(malicious_data)}")
+    print("\n恶意流量数据样例:")
+    print(malicious_data.head())
+
+    # Save malicious flows to a CSV file
+    malicious_data.to_csv(f'dir/{path}.csv', index=False)
+    print("\n恶意流量数据已保存到 'dir/result/malicious_flows.csv'")
